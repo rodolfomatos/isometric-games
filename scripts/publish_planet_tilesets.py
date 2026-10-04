@@ -55,13 +55,12 @@ TILE_W, TILE_H = 64, 32
 # data lives.
 MIN_OPAQUE = 0.02
 COLUMNS = 16
-IMAGE_ROOT = GAME / "assets" / "images"
 TILESET_ROOT = GAME / "assets" / "levels" / "tilesets"
 
 TSX = """<?xml version='1.0' encoding='utf-8'?>
 <tileset version="1.10" tiledversion="1.10.0" name="{theme}" tilewidth="{tile_w}" tileheight="{tile_h}" tilecount="{count}" columns="{columns}">
  <grid orientation="isometric" width="{tile_w}" height="{tile_h}" />
- <image source="{theme}.png" width="{width}" height="{height}" />
+ <image source="{image_source}" width="{width}" height="{height}" />
 </tileset>
 """
 
@@ -104,15 +103,28 @@ def build(theme: str, source: Path, check: bool) -> bool:
     columns = width // TILE_W
     count = rows * columns
 
-    published = IMAGE_ROOT / f"{theme}.png"
+    published = TILESET_ROOT / f"{theme}.png"
     tileset = TILESET_ROOT / f"{theme}.tsx"
-    wanted_image = f"assets/images/{theme}.png"
+    wanted_image = f"assets/levels/tilesets/{theme}.png"
+    # Next to the .tsx, because that is how flame_tiled resolves an image
+    # reference: the file that names it.
+    #
+    # The sheet used to be published to `assets/images/{theme}.png`, which the
+    # pubspec does not ship, so it never reached the build -- and the source was
+    # `{theme}.png` all along, correctly pointing beside the .tsx at a file that
+    # was not there. Every room in every planet drew untextured tiles: the floor
+    # and the 1310 wall tiles that decide collision, together. This script
+    # reported every planet as published, because it compared the .tsx against
+    # what it wanted to write and computed `wanted_image` from the start and
+    # compared that with nothing.
+    image_source = f"{theme}.png"
     wanted_tileset = TSX.format(
         theme=theme,
         tile_w=TILE_W,
         tile_h=TILE_H,
         count=count,
         columns=columns,
+        image_source=image_source,
         width=width,
         height=height,
     ).strip()
@@ -137,6 +149,13 @@ def build(theme: str, source: Path, check: bool) -> bool:
         problems.append(f"missing {tileset.relative_to(GAME)}")
     elif tileset.read_text().strip() != wanted_tileset:
         problems.append(f"{tileset.name} does not describe {source.name}")
+    elif not (TILESET_ROOT / image_source.format(theme=theme)).resolve().exists():
+        # The last check, and the one that was missing: not "does the sheet exist"
+        # -- it does -- but "does the path the game is told to load resolve".
+        problems.append(
+            f"{tileset.name} names an image at "
+            f"{image_source.format(theme=theme)}, which does not exist"
+        )
 
     if not problems:
         print(f"{theme}: {count} tiles in {columns} columns, published")
@@ -150,7 +169,6 @@ def build(theme: str, source: Path, check: bool) -> bool:
     # The sheets are drawn as squares and the game draws them as diamonds, so the
     # mask is applied on the way out. Applying it to an already-masked sheet
     # changes nothing, which is what makes this safe to run twice.
-    IMAGE_ROOT.mkdir(parents=True, exist_ok=True)
     TILESET_ROOT.mkdir(parents=True, exist_ok=True)
     if source != published:
         image = Image.open(source).convert("RGBA")

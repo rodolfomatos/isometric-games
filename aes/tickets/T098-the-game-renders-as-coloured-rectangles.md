@@ -178,3 +178,62 @@ fill -- is the only thing that would have caught this. A contact sheet a human
 looks at, checked into the repository, catches the rest. A threshold on "pixels
 changed" cannot do this job and should stop being asked to: the party idles, so
 the picture always changes.
+
+
+## The walls, and what they turned out to be
+
+Two of my own measurements were wrong before this was settled, both from looking
+for the wrong syntax rather than from the data being empty: the TMX layers use
+`<data>` in CSV, not `gid=` attributes, and `castle.tsx` declares no `<tile>`
+elements because it uses the image grid. Measured with the project's own parser:
+
+```
+22 rooms
+  Floor tiles drawn: 5120
+  Walls tiles drawn: 1310
+  castle_start  Walls: 60 drawn, gids 17,18,19   -- the perimeter of a 16x16 room
+```
+
+So the walls were always there, deciding collision, exactly as the room test
+requires. They were not a rendering bug.
+
+What was real is a path. The sheet was published to `assets/images/{theme}.png`,
+which the pubspec does not ship, so it never reached the build, while the `.tsx`
+said `source="{theme}.png"` -- correctly, pointing beside itself, at nothing. Every
+room in every planet loaded a 404 and drew untextured tiles. `publish_planet_tilesets.py`
+reported every planet as published: it compared the `.tsx` with what it wanted to
+write, computed `wanted_image` from the start, and compared that with nothing.
+
+Fixed, and the publisher now writes the sheet beside the `.tsx`, with a check that
+resolves the path the game is actually told to load.
+
+### And the fix changed nothing visible, which is the finding
+
+With the image shipping and no 404, the room renders and the walls are still
+invisible. Because:
+
+```
+gid  use      opaque  colours
+  1  floor      1055    2
+  3  floor      1055    3
+ 17  WALL       1055    2
+ 18  WALL       1055    2
+ 19  WALL       1055    1
+```
+
+**Every tile in the castle sheet is a flat diamond, walls and floor alike**, the
+same 1055 opaque pixels each, one to three colours. The walls draw. They draw as
+flat diamonds identical to the floor, so there is nothing to see.
+
+This is `door_master.png` one level up. The tilesets were never drawn either.
+
+### A hole in the gate written twenty minutes ago
+
+`validate_art_content.py` walks `assets/sprites/**` and nothing else. The published
+tilesets live in `assets/levels/tilesets/`, and `assets/sprites/tiles/castle/
+castle_masters.png` -- the file the publisher copies from -- is analysed as a
+*whole sheet*, where 7 distinct colours across 256 tiles is enough to pass.
+
+So the gate has a hole exactly where the art is not: a sheet averages its art away.
+Per-tile analysis of the sheets is the next gate, and it is not optional -- a
+sheet can be 6% opaque and still have every tile it uses flat.
