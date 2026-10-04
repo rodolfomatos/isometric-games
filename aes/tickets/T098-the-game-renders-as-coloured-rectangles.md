@@ -18,6 +18,41 @@ yellow, cyan, red, dark red, brown, pink, grey. No sprite art on any of them, an
 no art is missing from disk in a way the validators can see: they are being drawn
 this way on purpose, or by default.
 
+## The root cause, and it is not a rendering bug
+
+The README says the entities "draw the sprites the manifest holds rather than the
+coloured rectangles they stood in for, so what a player sees is art now". The
+manifest agrees. `assets/sprites/manifest.yaml` has 65 entries including
+`entity.door.closed -> entities/door/door_master.png` and
+`entity.conveyor.belt -> entities/conveyor/conveyor_master.png`. The files exist.
+The registry loads them. `showManifestSprite` builds a `SpriteComponent` from them.
+
+And `door_master.png` is **a flat dark brown rectangle**. 1021 bytes. So is
+`conveyor_master.png`, at 623.
+
+Nothing is broken. Every link in the chain works. The sprite files themselves were
+never drawn -- the AI pipeline is candidate-only and **no art has ever been
+accepted**, so what is in `assets/sprites/entities/` are the placeholder rectangles
+given a `.png` extension and a manifest entry.
+
+This is why the film and the documentation disagree without either being wrong in
+its own terms: the README describes the mechanism, and the mechanism works. It just
+carries nothing.
+
+Every gate is green because every gate asks *"is the file present and does it
+decode?"* and never *"is it art?"*. That is the seventh time this repository has
+produced a check that cannot fail, and it is the most expensive one, because it is
+invisible from the terminal: `ls` shows 65 sprites and a manifest that resolves.
+
+Two gates would have caught it, and neither exists:
+
+- an art gate that measures information content -- a flat fill has almost no
+  distinct colours and no edges, so "distinct colours >= 4 and a non-trivial
+  bounding box of non-background pixels" rejects a placeholder without needing to
+  know what a door should look like;
+- a human-approved contact sheet, checked in, which is what section 21 of
+  `docs/REIMAGINING.md` already asks for and which nothing implements.
+
 ## Why every gate was green
 
 `make verify-browser` counts changed pixels and fails under 200. This frame changes
