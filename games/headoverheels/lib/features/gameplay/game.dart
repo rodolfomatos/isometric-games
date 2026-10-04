@@ -33,7 +33,10 @@ class HeadOverHeelsGame extends FlameGame
   /// Set once the guardian is beaten, which is what opens the throne room.
   bool guardianDefeated = false;
   final WorldGraph _worldGraph;
-  final InteractionSystem _interactionSystem = InteractionSystem();
+
+  /// From the container, so the widget holding the keyboard and the game are
+  /// looking at one instance and not two.
+  late final InteractionSystem _interactionSystem;
   late final InputSystem _inputSystem;
 
   RoomComponent? _currentRoom;
@@ -49,6 +52,7 @@ class HeadOverHeelsGame extends FlameGame
     // The same input system the touch controls write to. Building a second one
     // here would mean the joystick talking to an object the game never reads.
     _inputSystem = ref.read(inputSystemProvider);
+    _interactionSystem = ref.read(interactionSystemProvider);
 
     // Load initial room from world graph
     _currentRoomId = _worldGraph.startRoom;

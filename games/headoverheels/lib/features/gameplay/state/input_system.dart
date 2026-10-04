@@ -117,6 +117,10 @@ class InputSystem {
     LogicalKeyboardKey.keyF: 'fire',
     LogicalKeyboardKey.tab: 'swop',
     LogicalKeyboardKey.keyQ: 'swop',
+    // Not in this table before, and its absence is why nothing in the game was
+    // interactive: `onInteract` had no key that could reach it.
+    LogicalKeyboardKey.keyE: 'interact',
+    LogicalKeyboardKey.enter: 'interact',
   };
 
   /// Whether [key] is one of the direction keys this system listens for.

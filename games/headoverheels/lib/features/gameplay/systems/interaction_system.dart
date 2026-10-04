@@ -2,6 +2,7 @@
 
 import 'dart:ui' show Rect;
 import 'package:flame/components.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:headoverheels/features/gameplay/entities/character_component.dart';
 import 'package:headoverheels/features/gameplay/entities/puzzle_entity.dart';
 
@@ -41,6 +42,33 @@ class InteractionSystem {
         _checkInteraction(character, entity);
       }
     }
+  }
+
+  /// Acts on whatever the party is standing next to, right now.
+  ///
+  /// `onEnter` fires when the party walks into something. This fires when the
+  /// player asks, which is a different act: a door is meant to be opened beside,
+  /// on purpose, not by walking into it and finding out.
+  ///
+  /// Nothing called this. `onInteract` is declared on `PuzzleEntity` as "presses
+  /// action key while overlapping", implemented by twelve entity files, and
+  /// reachable only from tests -- so every door, chest, key and the crown were
+  /// scenery that happened to be drawn.
+  ///
+  /// Overlapping is the same test `_checkInteraction` uses, on purpose: two
+  /// different notions of "adjacent" would mean a key press that does nothing
+  /// beside a thing the game thinks you are touching.
+  int onActionPressed() {
+    var acted = 0;
+    for (final character in _characters.toList()) {
+      for (final entity in _entities.toList()) {
+        if (_getBounds(character).overlaps(_getBounds(entity))) {
+          entity.onInteract(character);
+          acted++;
+        }
+      }
+    }
+    return acted;
   }
 
   void _checkInteraction(CharacterComponent character, PuzzleEntity entity) {
@@ -95,3 +123,14 @@ class _CollisionTracker {
     }
   }
 }
+
+/// The one interaction system the game and the widget both read.
+///
+/// The game used to build its own with `InteractionSystem()`, and the widget that
+/// holds the keyboard had no way to reach it -- `onInteract` had no caller, and
+/// `registerEntity` had none either. Two owners is the same bug as zero owners:
+/// a shared mutable thing that nobody can get at. One owner, in the container,
+/// read by both, is what makes "press E beside a door" a thing the game can do.
+final interactionSystemProvider = Provider<InteractionSystem>(
+  (ref) => InteractionSystem(),
+);

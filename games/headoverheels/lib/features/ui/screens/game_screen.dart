@@ -11,6 +11,7 @@ import 'package:headoverheels/features/ui/widgets/action_buttons.dart';
 import 'package:headoverheels/features/ui/widgets/hud.dart';
 import 'package:headoverheels/features/gameplay/room/room_graph.dart';
 import 'package:headoverheels/features/gameplay/state/input_system.dart';
+import 'package:headoverheels/features/gameplay/systems/interaction_system.dart';
 import 'package:headoverheels/features/audio/audio_system.dart';
 import 'package:headoverheels/features/audio/audio_settings.dart';
 
@@ -354,6 +355,10 @@ class _KeyboardControlsState extends ConsumerState<_KeyboardControls> {
         input.onFire();
       case 'swop':
         input.onSwop();
+      case 'interact':
+        // The one path from a keypress to an entity. It did not exist, which is
+        // why a door could be walked into indefinitely.
+        ref.read(interactionSystemProvider).onActionPressed();
     }
   }
 

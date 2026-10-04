@@ -1,11 +1,11 @@
 ---
 id: T097
-status: open
+status: closed
 severity: critical
 found_by: following T095's real question through the interaction path
 ---
 
-# T097 — the interaction system has never called an entity
+# T097 — CLOSED: three breaks in a chain, and a door that was a stub
 
 ## The finding
 
@@ -186,3 +186,68 @@ is four to six, so a door opening on screen is not something I have seen. What i
 measured: the party can stand on a door tile for sixty engine steps of the real
 game and the room does not change, and no code path registers an entity with the
 system that would change it.
+
+## Closed, and the real cause was under all of it
+
+Wiring the action path in made the key reach an entity -- and the room still did
+not change. The reason is the plainest thing in this whole ticket, and it was
+underneath everything above it:
+
+```dart
+void _triggerTransition(CharacterComponent character) {
+  // Room transition handled by game system
+  // This would emit an event to the game manager
+}
+```
+
+**`_DoorEntity._triggerTransition` was an empty method.** Two comments where the
+code should be. So a door could be walked into, stood beside and opened with the
+action key, and there was nothing between the key check and the room changing.
+
+Everything else about a door was real. The map declares 42 of them with positions,
+sizes and exits. `HeadOverHeelsGame.transitionTo` was written, and
+`room_transition_test.dart` tests it thoroughly. The door entity simply was never
+connected to any of it.
+
+```dart
+unawaited(game.transitionTo(targetRoom, targetEntrance));
+```
+
+Fire and forget on purpose: `transitionTo` is async and this is a synchronous
+callback in the middle of the interaction system's overlap loop, so awaiting here
+would hold the loop open across a room change.
+
+## Three breaks in one chain
+
+Worth stating plainly, because the shape is the lesson. Any one of these and the
+door is inert; all three were present at once, and each one hid the next:
+
+1. **`registerEntity` was never called**, so `_entities` was empty and `onEnter`
+   never fired. Fixed in `7cc09de`.
+2. **`onInteract` had no caller and no key.** There was no `interact` in
+   `InputSystem._actions`, no case in `_act`, and the widget holding the keyboard
+   had no route to the `InteractionSystem` the game owned. Now: `keyE`/`Enter`
+   bound to `interact`, `InteractionSystem.onActionPressed()` acting on whatever
+   overlaps, and one `interactionSystemProvider` so the game and the widget are
+   looking at the same instance rather than each holding their own.
+3. **`_triggerTransition` was empty.** The handler ran and did nothing.
+
+Fixing one link changes nothing, which is what the reverted `onEnter` delegation
+showed and what the failed traversal test showed twice. The only reason the chain
+was walked to the end is that each step had a measurement that could have been
+wrong: floor does not move the party, the action key reached an entity and the
+room stayed put. A green test at step two would have been a green test of a stub.
+
+## What is now covered
+
+- `entity_interaction_test.dart` -- `onEnter` fires. Conveyor, with a control that
+  bare floor moves nothing.
+- `door_interaction_test.dart` -- `onInteract` fires and the room changes. The
+  party stands beside the door and the room must *not* change first, so a door
+  that opened on approach could not pass it.
+
+Not covered, and not claimed: chests, keys, dropped items, fish, the crown, the
+dispensary, the bag and the hush puppy are `onInteract` entities too, so they are
+now reachable for the first time -- and some of them have never had a body behind
+their handler. They are worth one ticket each, and they should be opened by
+playing rather than by reasoning about it.

@@ -1,5 +1,7 @@
 // Entity factory for Head over Heels - creates puzzle entities from TMX triggers.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart' show Color;
 import 'package:headoverheels/core/isometric.dart';
 import 'package:headoverheels/features/gameplay/entities/character_component.dart';
@@ -155,8 +157,18 @@ class _DoorEntity extends PuzzleEntity {
   }
 
   void _triggerTransition(CharacterComponent character) {
-    // Room transition handled by game system
-    // This would emit an event to the game manager
+    // This was an empty method with two comments describing what it would do,
+    // so a door could be walked into, stood beside and opened with the action key
+    // and nothing would happen: there was no code between the key check and the
+    // room changing. Everything else about a door was real -- the map declared
+    // 42 of them with positions, sizes and exits, and the transition machinery in
+    // `HeadOverHeelsGame.transitionTo` was written and tested -- but the door
+    // itself was never connected to any of it.
+    //
+    // Fire and forget on purpose: `transitionTo` is async and this is a sync
+    // callback in the middle of the interaction system's overlap loop. Awaiting
+    // here would hold the loop across a room change.
+    unawaited(game.transitionTo(targetRoom, targetEntrance));
   }
 
   @override
