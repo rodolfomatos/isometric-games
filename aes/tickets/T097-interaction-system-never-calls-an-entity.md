@@ -51,6 +51,59 @@ settles it, from a widget test against the real game:
 Nothing in the room is interactive. Doors are the visible symptom because they
 are the one thing a player must touch to finish a room.
 
+## The design says two mechanisms, and the game implements neither
+
+The base class documents them, and this is the part that makes the diagnosis
+complete rather than merely suspicious:
+
+```dart
+// puzzle_entity.dart:147
+/// Called when character interacts (presses action key while overlapping).
+void onInteract(CharacterComponent character);
+
+/// Called when character enters trigger zone.
+void onEnter(CharacterComponent character) {}
+```
+
+So the intended design is two callbacks, not one: **walk into it** fires `onEnter`,
+and **press the action key while overlapping** fires `onInteract`. Doors implement
+`onInteract`, so a door is meant to be opened on a key press, standing next to it.
+
+Both are dead, for separate reasons:
+
+1. `onEnter` is dead because `registerEntity` is never called (above).
+2. `onInteract` is dead because there is no action path at all. `game_screen.dart`
+   routes every action key through `_act`, and `_act` handles exactly four:
+
+   ```dart
+   case 'jump': case 'carry': case 'fire': case 'swop':
+   ```
+
+   There is no `interact` in `_actions` and no case for one. `actionForKey` can
+   return the name of an action, and nothing can act on an entity with it.
+
+## Why the one-line fix would have been wrong
+
+It is tempting to collapse the two callbacks -- make `PuzzleEntity.onEnter`
+delegate to `onInteract` -- and that would make every handler reachable in one
+place without touching the twelve files. It is also wrong: it makes **doors open
+by walking into them**, which contradicts the documented design and changes the
+game rather than repairing it. Walking into a door and choosing to open it are
+different acts, and only one of them is what this game means.
+
+So the fix has two independent parts, and the first one is not optional:
+
+1. `RoomComponent._spawnEntities` must register each entity it spawns, and the
+   room teardown in `game.dart:_loadRoom` must unregister it. Without the second
+   half, `_entities` grows a room at a time and entities from rooms the party left
+   keep firing.
+2. An `interact` action: a key in `InputSystem._actions`, a case in `_act`, and a
+   route from there to `InteractionSystem`, which then calls `onInteract` on
+   whatever the character currently overlaps. This one crosses the widget/game
+   boundary -- `game_screen` holds the input and the `FlameGame` owns the
+   `InteractionSystem` -- so it needs a decision about how the two reach each
+   other, and that decision is not made here.
+
 ## The second half of it, which is why the obvious fix does not work
 
 `_DoorEntity` (`entity_factory.dart:111`) implements **`onInteract`** -- that is
