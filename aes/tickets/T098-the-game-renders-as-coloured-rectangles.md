@@ -71,3 +71,51 @@ Not a pixel count. The honest options are a render assertion per entity kind --
 that a door draws the door asset and not a flat fill -- or a contact sheet a human
 looks at, checked in. A threshold on "pixels changed" cannot do this job and should
 not be asked to.
+
+## Art direction, from reference screenshots the operator supplied
+
+Ten screenshots of the Spectrum original and the modern remake, kept outside the
+repository. The constraint stands and is unaffected by having looked at them: the
+1987 assets do not enter this project as art, as controls, as a LoRA, or as an
+img2img target. Reference is how you know what to build; it is not a source of
+pixels.
+
+They change the diagnosis. Three things, in order of how much they matter.
+
+### The walls are the art, and we draw none
+
+Both versions spend their visual identity on the walls. The Spectrum room is a
+plain grey diamond floor with **decorated walls** -- chevrons, brick, red
+diamonds, ornamental borders, one wall face per pattern. The remake keeps the same
+structure with wooden door panels, blue-and-gold columns and framed pictures.
+
+Ours draws no walls at all. And this is not missing art: `castle_start.tmx` has
+`Floor` and `Walls` layers, and `RoomComponent.isBlocked` reads the `Walls` layer
+for collision. The walls are in the data, they decide where the party cannot go,
+and they are invisible. That is the single biggest gap, and it is not an art
+problem -- it is a rendering problem.
+
+### Props are small sprites standing on the diamond, not bars
+
+In both versions every prop is a small isometric sprite sitting inside its tile:
+knights in helmets, treasure chests, frogs, monsters. Sizes are tile-scale.
+
+Ours are axis-aligned rectangles in flat pixel space, and the conveyor is
+`[1024.0, 32.0]` -- the full room width -- drawn as a straight bar across the
+screen. In the originals a conveyor is a belt segment repeated along the floor.
+So the conveyor is not just ugly, it is the wrong shape for its own size.
+
+### The plain floor is period-correct, and that one is fine
+
+The Spectrum floor *is* a plain grid. The remake textures it in dark brick. Ours is
+a plain grid, which means it matches the 1987 original and not the remake. That is
+a legitimate choice -- but it is currently a choice nobody made, so it should be
+written down rather than inherited from a default.
+
+## What would gate this
+
+A render assertion per entity kind -- a door draws the door asset and not a flat
+fill -- is the only thing that would have caught this. A contact sheet a human
+looks at, checked into the repository, catches the rest. A threshold on "pixels
+changed" cannot do this job and should stop being asked to: the party idles, so
+the picture always changes.
