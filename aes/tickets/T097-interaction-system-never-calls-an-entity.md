@@ -1,0 +1,107 @@
+---
+id: T097
+status: open
+severity: critical
+found_by: following T095's real question through the interaction path
+---
+
+# T097 — the interaction system has never called an entity
+
+## The finding
+
+`InteractionSystem.update()` is the only thing in the game that hands a character
+to an entity:
+
+```dart
+// systems/interaction_system.dart:39
+for (final character in _characters) {
+  for (final entity in _entities) {
+    _checkInteraction(character, entity);
+  }
+}
+```
+
+and `_checkInteraction` does the AABB test and, on the rising edge, calls
+`entity.onEnter(character)` (line 58). That is the whole mechanism.
+
+**`_entities` is empty.** `registerEntity` exists (line 26) and is called from
+nowhere in `lib/`:
+
+```
+$ grep -rn "registerCharacter\|registerEntity" --include="*.dart" games/headoverheels/lib
+game.dart:296:    _interactionSystem.registerCharacter(head);
+game.dart:301:    _interactionSystem.registerCharacter(heels);
+```
+
+Two characters, zero entities, for the entire game.
+
+So `onEnter` is never invoked on anything. Not on a door, not on a switch, not on
+a spring, not on a guardian, not on a monster.
+
+## Why it looks like a door problem, and is not
+
+This is what T095 was circling for sixteen browser walks. The measurement that
+settles it, from a widget test against the real game:
+
+- the party was placed one tile from `castle_start`'s east door, at (14,8);
+- the door is at (15,8);
+- the party was moved onto the door tile and held there for 60 engine steps;
+- **the room did not change.**
+
+Nothing in the room is interactive. Doors are the visible symptom because they
+are the one thing a player must touch to finish a room.
+
+## The second half of it, which is why the obvious fix does not work
+
+`_DoorEntity` (`entity_factory.dart:111`) implements **`onInteract`** -- that is
+where the transition lives -- and does **not** override `onEnter`. So the obvious
+one-line fix, delegating `onEnter` to `onInteract`, changes nothing at all: the
+system never calls `onEnter` either, because `_entities` is empty.
+
+I made that change, ran the traversal test, and it still failed. It is reverted.
+Shipping it with a comment saying it fixed doors would have been the worst
+outcome available: a fix that reads as a fix and changes nothing.
+
+The shape of it is worth naming. **Twelve entity files implement `onInteract`;
+five implement `onEnter`.** `PuzzleEntity.onEnter` is an empty body
+(`puzzle_entity.dart:151`), so everything that spells its handler `onInteract` --
+doors, chests, keys, dropped items, fish, the crown, the dispensary, the hush
+puppy, the bag -- inherits a no-op. Only the entities that happened to use the
+system's spelling have ever done anything.
+
+`onInteract` is called from `tests/gameplay_compiles_test.dart` and nowhere else.
+The tests pass because they invoke the handler directly.
+
+## Also dead, found on the way
+
+`RoomGraph.getExit(roomId, direction)` (`room_graph.dart:192`) resolves an exit by
+direction, which would be the natural way for a door to work if a party walks into
+the wall. Nothing calls it outside the class. So there are two plausible door
+mechanisms in this codebase and neither is connected to anything.
+
+## What fixing it involves, and the risk
+
+Two parts, and the first is not optional:
+
+1. `RoomComponent._spawnEntities` adds each entity to the room and nothing else.
+   Something has to call `registerEntity` for each one. The timing is the risk:
+   `_spawnEntities` runs in `onLoad`, and `game.dart` creates the room and then
+   `await world.add(room)`, so whether `room.entities` is populated at the call
+   site depends on how far the async `onLoad` has got.
+2. Decide the spelling. Renaming `onInteract` to `onEnter` across twelve files
+   touches every handler and every test that calls it directly. Delegating
+   `onEnter => onInteract` on `PuzzleEntity` once, in the base class, would make
+   every existing handler reachable without touching the twelve -- and would give
+   the other direction of the bug, `onExit`, the same treatment for free.
+
+Part 2 in the base class is the smaller change and it is the one that makes the
+seven currently-dead entity types work. It should not be done without part 1, or
+it changes nothing in the same way my reverted fix did.
+
+## What is not claimed
+
+No player-facing claim. This has not been watched in a browser, and the fps there
+is four to six, so a door opening on screen is not something I have seen. What is
+measured: the party can stand on a door tile for sixty engine steps of the real
+game and the room does not change, and no code path registers an entity with the
+system that would change it.
