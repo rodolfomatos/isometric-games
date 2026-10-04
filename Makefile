@@ -82,7 +82,7 @@ format-check:
 	@dart format --output=none --set-exit-if-changed games packages
 
 check: format-check lint test test-packages assets-check test-ai \
-	gmif-check gmif-staleness
+	gmif-check gmif-staleness art-content
 
 test-packages:
 	@cd packages/iso_core && flutter test
@@ -194,6 +194,12 @@ gmif-check:
 # is stale" from "I read nothing" is not a gate.
 gmif-staleness:
 	python3 scripts/gmif_staleness.py
+
+# Asks whether a sprite file contains art. Every other check in this repository
+# asks whether it exists and decodes, which `door_master.png` -- a flat brown
+# rectangle, 1021 bytes -- passes. T098.
+art-content:
+	python3 scripts/validate_art_content.py
 
 assets-check:
 	@python3 scripts/validation_pipeline.py $(GAME)

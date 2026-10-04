@@ -44,14 +44,38 @@ decode?"* and never *"is it art?"*. That is the seventh time this repository has
 produced a check that cannot fail, and it is the most expensive one, because it is
 invisible from the terminal: `ls` shows 65 sprites and a manifest that resolves.
 
-Two gates would have caught it, and neither exists:
+## The first of those two gates now exists
 
-- an art gate that measures information content -- a flat fill has almost no
-  distinct colours and no edges, so "distinct colours >= 4 and a non-trivial
-  bounding box of non-background pixels" rejects a placeholder without needing to
-  know what a door should look like;
-- a human-approved contact sheet, checked in, which is what section 21 of
-  `docs/REIMAGINING.md` already asks for and which nothing implements.
+`scripts/validate_art_content.py`, wired into `make check`. It asks a question no
+check here has asked: does the file carry any information?
+
+The threshold is measured, not chosen. Across the 65 PNGs under
+`assets/sprites/` the colour counts fall into two groups with nothing between them:
+
+    entities/*, props/*     2-3 distinct opaque colours   <- flat fills
+    characters/*            5-9 distinct opaque colours   <- drawn
+    tiles/*                 8-18 distinct opaque colours  <- drawn
+
+Four is the floor of the real group. The caveat is written into the gate: a
+genuinely simple prop could have three colours and be real art, so the gate is
+scoped to what it can decide -- *this is a flat fill* -- and the human contact
+sheet is what decides whether a sprite is **good**. Both are needed.
+
+Existing debt is a baseline, `scripts/art_content_baseline.txt`, generated from the
+gate's own measurement so it cannot drift from what the gate decides. 24 files. A
+file may stay a placeholder if it is already listed; nothing new may join by being
+committed. The file says DEBT, NOT APPROVAL.
+
+Two of the nine tests are the ones that matter:
+
+- a new flat fill **fails**, built to the same shape as the real door sprite rather
+  than to some failure the author imagined;
+- **deleting a file from the baseline makes the gate fail.** Without that, the
+  baseline would be a waiver that hides everything after it -- a gate consulting an
+  empty list allows the whole corpus.
+
+Still missing, and not solvable by a script: the contact sheet that section 21 of
+`REIMAGINING.md` already asks for.
 
 ## Why every gate was green
 

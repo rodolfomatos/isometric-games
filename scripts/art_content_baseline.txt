@@ -1,0 +1,33 @@
+# Known placeholder art. DEBT, NOT APPROVAL.
+#
+# Every file here was already a flat fill before this gate existed, so it is
+# allowed to stay one. Nothing new may join this list by being committed: a file
+# not listed here must carry real art or the gate fails.
+#
+# Generated from scripts/validate_art_content.py's own measurement, not written by
+# hand, so it cannot drift from what the gate actually decides.
+
+entities/bag/bag_master.png
+entities/conveyor/conveyor_master.png
+entities/crown/crown_master.png
+entities/door/door_master.png
+entities/doughnut/doughnut_master.png
+entities/fish/fish_master.png
+entities/guardian/guardian_master.png
+entities/hush_puppy/hush_puppy_master.png
+entities/key/key_master.png
+entities/monster/monster_master.png
+entities/rabbit/rabbit_master.png
+entities/spring/spring_master.png
+entities/switch/switch_master.png
+entities/teleport/teleport_master.png
+props/banner/banner.png
+props/barrel/barrel.png
+props/chain/chain.png
+props/crate/crate.png
+props/crate_broken/crate_broken.png
+props/lever/lever.png
+props/pressure_plate/pressure_plate.png
+props/sign/sign.png
+props/skull/skull.png
+props/torch/torch.png
