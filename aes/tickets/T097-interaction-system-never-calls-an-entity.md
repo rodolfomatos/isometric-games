@@ -51,6 +51,34 @@ settles it, from a widget test against the real game:
 Nothing in the room is interactive. Doors are the visible symptom because they
 are the one thing a player must touch to finish a room.
 
+## Part 1 is done: entities are registered (this commit)
+
+`RoomComponent` takes an optional `interactionSystem` and registers each entity it
+spawns; `game.dart` passes its own in and unregisters the previous room's entities
+before removing them. The unregistration is not tidiness -- the system keeps its
+own list and does not follow the component tree, so an entity left behind keeps
+being overlap-tested against the party for the rest of the game, from a room that
+no longer exists.
+
+`entity_interaction_test.dart` covers it with a conveyor, and it has a control
+first: the party stands on bare floor and must not move. Without that control a
+system that fired every entity everywhere would satisfy "the conveyor pushed the
+party", and the test would be worth nothing.
+
+Two things the test had to get right, both of which it got wrong first:
+
+- **The tile is read from the room**, not hard-coded, so a map edit cannot leave
+  it testing a tile that is no longer a conveyor.
+- **Positions are in pixels.** Entities are placed by the same `gridToScreen` the
+  doors use -- the conveyor on tile (0,6) sits at (-192,96) -- and
+  `CharacterComponent._syncFromState` does `position = gridToScreen(state.position)`,
+  so the party's component position is in the same space. The first run set it to
+  `(0,6)` in *tile* units and reported the conveyor broken with the two 200 pixels
+  apart in different coordinate spaces. A red test is not automatically a finding.
+
+Doors are unaffected by this commit and still do nothing. They are `onInteract`,
+and there is still no action path.
+
 ## The design says two mechanisms, and the game implements neither
 
 The base class documents them, and this is the part that makes the diagnosis

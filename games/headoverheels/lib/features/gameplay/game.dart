@@ -135,7 +135,11 @@ class HeadOverHeelsGame extends FlameGame
     // draws no tree but its own. The party blinked out for a frame on every
     // door. The original bug was the same shape with no window: it detached and
     // never re-attached, so the party was gone rather than blinking.
-    final room = RoomComponent(roomId: roomId, definition: definition);
+    final room = RoomComponent(
+      roomId: roomId,
+      definition: definition,
+      interactionSystem: _interactionSystem,
+    );
     // Into the world, not into the game. `FlameGame`'s camera draws the world
     // and nothing else, so a component added to the game itself never goes
     // through the camera: its world coordinates land straight on the canvas,
@@ -169,6 +173,11 @@ class HeadOverHeelsGame extends FlameGame
     // Only now is the old room torn down, with nobody in it.
     if (previous != null) {
       for (final entity in previous.entities.toList()) {
+        // Unregister before removing. The interaction system holds its own list
+        // and does not follow the component tree, so an entity left registered
+        // keeps being overlap-tested against the party for the rest of the game
+        // -- from a room that no longer exists.
+        _interactionSystem.unregisterEntity(entity);
         entity.removeFromParent();
       }
       previous.removeFromParent();

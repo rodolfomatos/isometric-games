@@ -8,6 +8,7 @@ import 'package:headoverheels/core/isometric.dart';
 import 'package:headoverheels/features/gameplay/entities/character_component.dart';
 import 'package:headoverheels/features/gameplay/entities/entity_factory.dart';
 import 'package:headoverheels/features/gameplay/entities/puzzle_entity.dart';
+import 'package:headoverheels/features/gameplay/systems/interaction_system.dart';
 import 'package:headoverheels/features/gameplay/room/room_graph.dart';
 
 /// Room component that manages a single room's tilemap and entities.
@@ -20,9 +21,18 @@ class RoomComponent extends PositionComponent with HasGameReference {
   final List<CharacterComponent> characters = [];
   RoomState _state;
 
+  /// The system that hands a character to an entity when they overlap.
+  ///
+  /// Optional, and it has to be: a room built without one is a room whose
+  /// entities nobody can ever touch. It was missing altogether for the whole
+  /// game -- `registerEntity` existed and nothing called it, so
+  /// `InteractionSystem._entities` was empty and no `onEnter` was ever fired.
+  final InteractionSystem? interactionSystem;
+
   RoomComponent({
     required this.roomId,
     required this.definition,
+    this.interactionSystem,
     RoomState? initialState,
   }) : _state = initialState ?? RoomState.initial(roomId);
 
@@ -81,6 +91,10 @@ class RoomComponent extends PositionComponent with HasGameReference {
     for (final entry in ordered) {
       entities.add(entry.value);
       add(entry.value);
+      // A room full of entities the interaction system has never heard of is a
+      // room full of scenery. This one line is why walking onto a conveyor used
+      // to do nothing.
+      interactionSystem?.registerEntity(entry.value);
     }
   }
 
