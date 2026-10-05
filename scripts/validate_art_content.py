@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import collections
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -50,6 +51,96 @@ MIN_OPAQUE_COLOURS = 4
 
 # A sprite whose opaque area is this small is a dot, whatever its colour count.
 MIN_OPAQUE_FRACTION = 0.01
+
+
+PLACEHOLDER = "placeholder"
+DRAWN = "drawn"
+
+TILESETS = REPO_ROOT / "games" / "headoverheels" / "assets" / "levels" / "tilesets"
+ROOMS = REPO_ROOT / "games" / "headoverheels" / "assets" / "levels" / "rooms"
+
+LAYER = re.compile(r'<layer[^>]*name="([^"]+)"[^>]*>(.*?)</layer>', re.S)
+DATA = re.compile(r"<data[^>]*>(.*?)</data>", re.S)
+IMAGE = re.compile(
+    r'<image[^>]*source="([^"]+)"[^>]*width="(\d+)"[^>]*height="(\d+)"')
+TILE_W, TILE_H = 64, 32
+
+
+def room_gids() -> dict:
+    """Which gids each theme's rooms actually name.
+
+    Only these matter. A sheet has 256 cells and a room names a handful; judging
+    the unused remainder is how a sheet passes a per-file check while everything
+    it draws is flat. This is the sibling of the Dart test "every tile a room
+    names is a tile the tileset has" -- the tile existing is the first half, and
+    the tile carrying art is the half nothing was asking for.
+    """
+    used: dict = {}
+    for tmx in sorted(ROOMS.rglob("*.tmx")):
+        text = tmx.read_text(encoding="utf-8")
+        reference = re.search(r"<tileset[^>]*>", text)
+        source = re.search(r'source="([^"]+)"', reference.group(0)) if reference else None
+        if not source:
+            continue
+        theme = pathlib.Path(source.group(1)).stem
+        bucket = used.setdefault(theme, set())
+        for layer in LAYER.finditer(text):
+            data = DATA.search(layer.group(2))
+            if not data:
+                continue
+            for value in re.findall(r"\d+", data.group(1)):
+                gid = int(value)
+                if gid:
+                    bucket.add(gid)
+    return used
+
+
+def analyse_tileset(theme: str, gids: set) -> list:
+    """Per-tile verdict for the gids a room names. Returns the placeholders."""
+    tsx = TILESETS / f"{theme}.tsx"
+    if not tsx.exists():
+        return [{"theme": theme, "gid": 0, "reason": f"no {tsx.name}"}]
+    image = IMAGE.search(tsx.read_text(encoding="utf-8"))
+    if not image:
+        return [{"theme": theme, "gid": 0,
+                 "reason": f"{tsx.name} names no image"}]
+    sheet = TILESETS / image.group(1)
+    if not sheet.exists():
+        return [{"theme": theme, "gid": 0,
+                 "reason": f"{tsx.name} names {image.group(1)}, which is not "
+                           f"there. A path that cannot resolve draws nothing "
+                           f"and says nothing either."}]
+
+    width, height, channels, pixels = bp.decode(sheet)
+    columns = max(1, width // TILE_W)
+    bad: list = []
+    for gid in sorted(gids):
+        index = gid - 1
+        cx, cy = (index % columns) * TILE_W, (index // columns) * TILE_H
+        colours = set()
+        opaque = 0
+        for y in range(cy, min(cy + TILE_H, height)):
+            for x in range(cx, min(cx + TILE_W, width)):
+                offset = (y * width + x) * channels
+                if channels >= 4 and pixels[offset + 3] < 16:
+                    continue
+                opaque += 1
+                colours.add((pixels[offset], pixels[offset + 1],
+                             pixels[offset + 2]))
+        fraction = opaque / float(TILE_W * TILE_H)
+        thin = fraction < MIN_OPAQUE_FRACTION
+        flat = len(colours) < MIN_OPAQUE_COLOURS
+        if thin or flat:
+            bad.append({
+                "theme": theme, "gid": gid, "colours": len(colours),
+                "opaque_fraction": fraction,
+                "reason": f"{len(colours)} opaque colour"
+                          f"{'' if len(colours) == 1 else 's'}, "
+                          f"{fraction * 100:.0f}% of the tile opaque"
+                          + (" -- a flat fill, not art" if flat
+                             else " -- too empty to be a tile"),
+            })
+    return bad
 
 
 def analyse(path: pathlib.Path) -> dict:
@@ -91,6 +182,39 @@ def known_placeholders() -> set[str]:
         return set()
     return {line.strip() for line in BASELINE.read_text().splitlines()
             if line.strip() and not line.startswith("#")}
+
+
+TILESET_BASELINE = pathlib.Path(__file__).resolve().parent / "tileset_baseline.txt"
+
+
+def known_tileset_debt() -> set[str]:
+    """Themes already published as flat diamonds. Debt, not approval.
+
+    One line per theme rather than per gid, because a theme's 256 cells are all
+    the same shape of failure and a per-gid baseline would be a list nobody reads
+    and nobody prunes.
+    """
+    if not TILESET_BASELINE.exists():
+        return set()
+    return {line.strip() for line in TILESET_BASELINE.read_text().splitlines()
+            if line.strip() and not line.startswith("#")}
+
+
+def check_tilesets() -> tuple[list[dict], list[dict], int]:
+    used = room_gids()
+    allowed = known_tileset_debt()
+    failures: list[dict] = []
+    grandfathered: list[dict] = []
+    tiles = 0
+    for theme, gids in sorted(used.items()):
+        tiles += len(gids)
+        for bad in analyse_tileset(theme, gids):
+            if theme in allowed:
+                bad["theme"] = theme
+                grandfathered.append(bad)
+            else:
+                failures.append(bad)
+    return failures, grandfathered, tiles
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -159,7 +283,28 @@ def main(argv: list[str] | None = None) -> int:
         for row in grandfathered:
             print(f"  -- {row['path'].relative_to(SPRITES)}: {row['reason']}")
 
-    return 1 if failures else 0
+    tile_failures, tile_debt, tiles = check_tilesets()
+    themes = len(room_gids())
+    print(f"tiles named by rooms: {tiles} across {themes} theme(s); "
+          f"{len(tile_debt)} known flat, {len(tile_failures)} undeclared")
+
+    for bad in tile_failures:
+        print(f"[!!] {bad['theme']}.png gid {bad['gid']}: {bad['reason']}")
+        print("     A tile a room names, with no art in it. The whole sheet can "
+              "pass a per-file check while every tile it draws is flat, which is "
+              "what the castle was.")
+
+    if tile_debt:
+        print()
+        counts: dict[str, int] = {}
+        for bad in tile_debt:
+            counts[bad["theme"]] = counts.get(bad["theme"], 0) + 1
+        print(f"tileset debt, unchanged and not approved "
+              f"({len(tile_debt)} of {tiles}):")
+        for theme, count in sorted(counts.items()):
+            print(f"  -- {theme}.png: {count} tile(s) are flat diamonds")
+
+    return 1 if failures or tile_failures else 0
 
 
 if __name__ == "__main__":

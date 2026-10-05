@@ -155,3 +155,84 @@ def test_the_baseline_file_exists_and_is_not_empty():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# --- per-tile tileset analysis ---------------------------------------------
+#
+# The gate written twenty minutes earlier walked `assets/sprites/**` and nothing
+# else, and analysed a tileset as a whole sheet. castle_masters.png has seven
+# distinct colours across 256 tiles and passed, while every tile a room names in
+# it is a flat diamond. A sheet averages its art away. These are the tests that
+# close that hole.
+
+def test_the_wall_tiles_a_room_names_are_flat():
+    """Measured on the real thing, not asserted about a fixture."""
+    used = art.room_gids()
+    assert "castle" in used, "no castle rooms found to analyse"
+
+    bad = art.analyse_tileset("castle", used["castle"])
+    assert bad, (
+        "the castle's floor and wall tiles now carry art -- delete 'castle' "
+        "from scripts/tileset_baseline.txt and the debt shrinks")
+
+    gids = {entry["gid"] for entry in bad}
+    assert 17 in gids and 18 in gids, (
+        f"expected the wall tiles to be flat, got {gids}")
+
+
+def test_every_theme_is_currently_flat_and_says_so():
+    used = art.room_gids()
+    assert len(used) == 5, f"expected five themes, found {sorted(used)}"
+
+    for theme, gids in used.items():
+        bad = art.analyse_tileset(theme, gids)
+        assert bad, f"{theme} reports no flat tile among {len(gids)}"
+
+
+def test_the_gate_fails_on_a_theme_that_is_not_in_the_baseline(monkeypatch):
+    monkeypatch.setattr(art, "known_tileset_debt", lambda: set())
+    failures, debt, tiles = art.check_tilesets()
+
+    assert failures, "a flat castle tile must fail with an empty baseline"
+    assert len(debt) == 0
+    assert tiles > 0
+
+
+def test_removing_a_theme_from_the_baseline_makes_it_fail(monkeypatch):
+    """The baseline is debt, not a waiver -- the same property as the sprite one."""
+    monkeypatch.setattr(art, "known_tileset_debt", lambda: {"egyptus"})
+    failures, debt, _ = art.check_tilesets()
+
+    assert failures, "a theme left out of the baseline must fail"
+    themes = {entry["theme"] for entry in debt}
+    assert themes == {"egyptus"}
+
+
+def test_an_image_path_that_cannot_resolve_is_reported(tmp_path, monkeypatch):
+    """The bug that shipped: the sheet was published where nothing loaded it."""
+    tilesets = tmp_path / "tilesets"
+    tilesets.mkdir()
+    (tilesets / "broken.tsx").write_text(
+        '<tileset><image source="nowhere.png" width="64" height="32"/></tileset>',
+        encoding="utf-8")
+    monkeypatch.setattr(art, "TILESETS", tilesets)
+
+    bad = art.analyse_tileset("broken", {1})
+    assert bad and "not" in bad[0]["reason"] and "there" in bad[0]["reason"]
+
+
+def test_the_sprite_gate_does_not_cover_the_tilesets(tmp_path, monkeypatch):
+    """The hole, stated as a test so it cannot be forgotten again.
+
+    The published sheets live in assets/levels/tilesets/. If this ever passes with
+    a placeholder sheet, the sprite-only walk has swallowed the tilesets -- or the
+    baseline has grown to cover them.
+    """
+    sprite_only = tmp_path / "sprites"
+    sprite_only.mkdir()
+    monkeypatch.setattr(art, "SPRITES", sprite_only)
+
+    assert art.main([]) == 0, (
+        "with no sprites at all the sprite pass should still be happy -- which "
+        "is exactly why it missed every tileset")
+

@@ -56,6 +56,13 @@ TILE_W, TILE_H = 64, 32
 MIN_OPAQUE = 0.02
 COLUMNS = 16
 TILESET_ROOT = GAME / "assets" / "levels" / "tilesets"
+# The editor loads tileset images from here, and two Dart tests assert the sheet is
+# there. The game loads the one beside the .tsx, because that is where a relative
+# image reference in a .tsx resolves. Two consumers, two paths, one sheet -- so the
+# publisher writes both and `--check` verifies both. It looked like an orphan
+# directory until this was measured: `iso_editor/editor_project.dart` sets
+# `tilesetImageBasePath` to it.
+IMAGE_ROOT = GAME / "assets" / "images"
 
 TSX = """<?xml version='1.0' encoding='utf-8'?>
 <tileset version="1.10" tiledversion="1.10.0" name="{theme}" tilewidth="{tile_w}" tileheight="{tile_h}" tilecount="{count}" columns="{columns}">
@@ -104,8 +111,10 @@ def build(theme: str, source: Path, check: bool) -> bool:
     count = rows * columns
 
     published = TILESET_ROOT / f"{theme}.png"
+    for_editor = IMAGE_ROOT / f"{theme}.png"
     tileset = TILESET_ROOT / f"{theme}.tsx"
     wanted_image = f"assets/levels/tilesets/{theme}.png"
+    wanted_editor_image = f"assets/images/{theme}.png"
     # Next to the .tsx, because that is how flame_tiled resolves an image
     # reference: the file that names it.
     #
@@ -145,7 +154,13 @@ def build(theme: str, source: Path, check: bool) -> bool:
             f"{opaque_fraction(Image.open(published)):.1%} opaque, which is a "
             f"planet with no floor rather than a tileset"
         )
-    if not tileset.exists():
+    if not for_editor.exists():
+        problems.append(f"missing {for_editor.relative_to(GAME)} "
+                        f"-- the editor loads tileset images from here")
+    elif png_size(for_editor) != (width, height):
+        problems.append(f"{for_editor.name} is {png_size(for_editor)}, "
+                        f"the art is {(width, height)}")
+    elif not tileset.exists():
         problems.append(f"missing {tileset.relative_to(GAME)}")
     elif tileset.read_text().strip() != wanted_tileset:
         problems.append(f"{tileset.name} does not describe {source.name}")
@@ -170,6 +185,7 @@ def build(theme: str, source: Path, check: bool) -> bool:
     # mask is applied on the way out. Applying it to an already-masked sheet
     # changes nothing, which is what makes this safe to run twice.
     TILESET_ROOT.mkdir(parents=True, exist_ok=True)
+    IMAGE_ROOT.mkdir(parents=True, exist_ok=True)
     if source != published:
         image = Image.open(source).convert("RGBA")
         # Every sheet is written already masked, by `save_masked` in the
@@ -178,6 +194,8 @@ def build(theme: str, source: Path, check: bool) -> bool:
         if not already_masked(image):
             apply_diamond_mask(image)
         image.save(published, optimize=True)
+    if not for_editor.exists() or png_size(for_editor) != (width, height):
+        image.save(for_editor, optimize=True)
     tileset.write_text(wanted_tileset + "\n")
     print(f"{theme}: published {count} tiles")
     return True

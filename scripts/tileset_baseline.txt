@@ -1,0 +1,11 @@
+# Tilesets published as flat diamonds. DEBT, NOT APPROVAL.
+#
+# Every tile a room names in these themes is a flat fill with 1-3 opaque colours.
+# They may stay that way; a theme not listed here may not join by being published.
+#
+# Generated from validate_art_content.py's own per-tile measurement.
+castle
+egyptus
+penitentiary
+safari
+bookworld
